@@ -14,27 +14,38 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 
     @IBOutlet var sceneView: ARSCNView!
     
+    var BayMaxNode: SCNNode?
+    var DuckNode: SCNNode?
+    var imageNode = [SCNNode]()
+    var isJumping = false
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
         // Set the view's delegate
         sceneView.delegate = self
+        sceneView.autoenablesDefaultLighting = true
+        let BayMaxScene = SCNScene(named: "art.scnassets/Bigmax_White_OBJ.scn")
+        let DuckScene = SCNScene(named: "art.scnassets/tinker.scn")
         
-        // Show statistics such as fps and timing information
-        sceneView.showsStatistics = true
+        BayMaxNode = BayMaxScene?.rootNode
+        DuckNode = DuckScene?.rootNode
         
-        // Create a new scene
-        let scene = SCNScene(named: "art.scnassets/ship.scn")!
         
-        // Set the scene to the view
-        sceneView.scene = scene
+      
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
         // Create a session configuration
-        let configuration = ARWorldTrackingConfiguration()
+        let configuration = ARImageTrackingConfiguration()
+        
+        if let trackingImages = ARReferenceImage.referenceImages(inGroupNamed: "AR Resources AQUAMAN", bundle: Bundle.main) {
+            configuration.trackingImages = trackingImages
+            configuration.maximumNumberOfTrackedImages = 2
+            
+        }
 
         // Run the view's session
         sceneView.session.run(configuration)
@@ -46,30 +57,99 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         // Pause the view's session
         sceneView.session.pause()
     }
-
-    // MARK: - ARSCNViewDelegate
     
-/*
-    // Override to create and configure nodes for anchors added to the view's session.
     func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
+        
         let node = SCNNode()
-     
-        return node
+        
+        if let ImageAnchor = anchor as? ARImageAnchor {
+            
+            let size = ImageAnchor.referenceImage.physicalSize
+            let plane = SCNPlane(width: size.width, height: size.height)
+            
+            plane.firstMaterial?.diffuse.contents = UIColor.white.withAlphaComponent(0.5)
+            plane.cornerRadius = 0.005
+            let planeNode = SCNNode(geometry: plane)
+            planeNode.eulerAngles.x = -.pi / 2
+            node.addChildNode(planeNode)
+            
+
+            var shapeNode: SCNNode?
+            
+            switch ImageAnchor.referenceImage.name{ //  check รูปภาพที่จับได้
+                
+            case CardType.USBC.rawValue :
+                shapeNode = DuckNode
+            case CardType.BOOK.rawValue :
+                shapeNode = BayMaxNode
+            default :
+                break
+                
+            }
+            
+            let shapeSpin = SCNAction.rotateBy(x: 0, y: 2 * .pi , z: 0, duration:  5) // หมุน
+            let repeatSpin = SCNAction.repeatForever(shapeSpin)
+            shapeNode?.runAction(repeatSpin)
+            
+            guard let shape = shapeNode else { return nil }
+            node.addChildNode(shape)
+            imageNode.append(node)
+            
+            return node
+            
+            
+         }
+        
+        return nil
     }
-*/
     
-    func session(_ session: ARSession, didFailWithError error: Error) {
-        // Present an error message to the user
+    func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+        if imageNode.count == 2 {
+            let positionOne = SCNVector3ToGLKVector3(imageNode[0].position)
+            let positionTwo = SCNVector3ToGLKVector3(imageNode[1].position)
+            
+            let distance = GLKVector3Distance(positionOne, positionTwo) // ระยะที่ 2 วัตถุอยู่ห่างกัน ตั้งแต่ซ้ายสุดไปขวาสุด
+            print(distance)
+            if distance < 30 /* cm */ {
+                
+                print("We are close!")
+                
+                spinJump(node: imageNode[0])
+                spinJump(node: imageNode[1])
+                isJumping = true
+                
+            }else {
+                
+                isJumping = false
+            }
+        }
+    }
+    
+    enum CardType :String{
+        case USBC = "USB-C"
+        case BOOK = "bookIMG"
+    }
+    
+    func spinJump(node: SCNNode)  {
+        if isJumping {return}
+        
+        let shapeNode = node.childNodes[1]
+        
+        let shapeSpin = SCNAction.rotateBy(x: 0, y: 2 * .pi, z: 0, duration: 1)
+        shapeSpin.timingMode = .easeInEaseOut
+        
+        let up = SCNAction.moveBy(x: 0, y: 0.05, z: 0, duration: 0.5)
+        up.timingMode = .easeInEaseOut
+        let down = up.reversed()
+        
+        let upDown = SCNAction.sequence([up,down])
+        
+        
+        shapeNode.runAction(shapeSpin)
+        shapeNode.runAction(upDown)
+        
         
     }
-    
-    func sessionWasInterrupted(_ session: ARSession) {
-        // Inform the user that the session has been interrupted, for example, by presenting an overlay
-        
-    }
-    
-    func sessionInterruptionEnded(_ session: ARSession) {
-        // Reset tracking and/or remove existing anchors if consistent tracking is required
-        
-    }
+
+  
 }
